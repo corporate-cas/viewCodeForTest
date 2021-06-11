@@ -1,0 +1,167 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fable/ui/user_model.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/services.dart';
+
+class FirestoreService {
+  final CollectionReference _usersCollectionReference =
+      FirebaseFirestore.instance.collection('users');
+
+  Future createUserRecord(UserModel user) async {
+    try {
+      await _usersCollectionReference.doc(user.id).set(user.toJson());
+
+      print('stored in firestore');
+    } on FirebaseException catch (e) {
+      return e.message;
+    }
+  }
+
+  Future getUser(String userId) async {
+    try {
+      DocumentSnapshot snapshot =
+          await _usersCollectionReference.doc(userId).get();
+
+      Object? data = snapshot.data();
+      var userObjectAsString = (data as Map<String, dynamic>);
+
+      var constructedUser = UserModel.fromData(userObjectAsString);
+
+      return constructedUser;
+    } on FirebaseException catch (e) {
+      return e.message;
+    }
+  }
+}
+
+/*end of FirestoreService and beginning of AuthenticationService*/
+
+import 'package:fable/Services/firestoreService.dart';
+import 'package:fable/app/app.locator.dart';
+import 'package:fable/ui/user_model.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:stacked/stacked_annotations.dart';
+
+@LazySingleton()
+class AuthenticationService {
+  final FirestoreService? _firestoreService = locator<FirestoreService>();
+  final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
+
+  UserModel? _currentUser;
+  UserModel? get currentUser => _currentUser;
+
+/*Create account*/
+  Future signUp(
+      {required String fullName,
+      required String email,
+      required String phoneNumber,
+      required String password}) async {
+    try {
+      var authResult = await _firebaseAuth.createUserWithEmailAndPassword(
+          email: email, password: password);
+
+      _currentUser = UserModel(
+        id: authResult.user!.uid,
+        email: email,
+        fullName: fullName,
+      );
+
+      await _firestoreService!.createUserRecord(_currentUser!);
+      print(
+          'This is the user\'s full ID: ${_currentUser!.id}. This is on signup only.');
+      return authResult.user != null;
+    } on FirebaseAuthException catch (e) {
+      return e.message;
+    }
+  }
+
+/*Login or Sign in to account*/
+  Future logIn({required email, required password}) async {
+    try {
+      var authResult = await _firebaseAuth.signInWithEmailAndPassword(
+          email: email, password: password);
+
+      await _populateCurrentUser(authResult.user!);
+      print(
+          'This is the user\'s full EMAIL: ${authResult.user!.email}. This is from the authResult just to verify that the value is present');
+      return authResult.user;
+    } on FirebaseAuthException catch (e) {
+      return e.message;
+    }
+  }
+
+  Future _populateCurrentUser(User? user) async {
+    if (user != null) {
+      _currentUser = await _firestoreService!.getUser(user.uid);
+      print(
+          'This is the user\'s full name: ${_currentUser!.fullName} just to verify that the value is present');
+    }
+  }
+
+/*Check if user is signed in*/
+  isUserLoggedIn() {
+    var user = FirebaseAuth.instance.currentUser;
+    print('This is the user: $user');
+
+    _populateCurrentUser(user);
+    return user;
+  }
+}
+
+/*end of AuthenticationService and beginning of MarketModel*/
+
+import 'package:fable/Services/authentication_services.dart';
+import 'package:fable/app/app.locator.dart';
+import 'package:fable/app/app.router.dart';
+import 'package:fable/list_gen/product_card_details.dart';
+import 'package:fable/ui/authentication_model.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:stacked/stacked.dart';
+import 'package:stacked_firebase_auth/stacked_firebase_auth.dart';
+import 'package:stacked_services/stacked_services.dart';
+
+class MarketModel extends AuthenticationViewModel {
+  ProductCardDetails prod = ProductCardDetails();
+  final AuthenticationService _authenticationService =
+      locator<AuthenticationService>();
+  final FirebaseAuthenticationService _firebaseAuthenticationService =
+      locator<FirebaseAuthenticationService>();
+  final NavigationService? _navigationService = locator<NavigationService>();
+
+/*Display name*/
+  String? _displayName;
+
+  String? displayName() {
+    _displayName = _authenticationService.currentUser!.fullName;
+    print(
+        'My moda fooking name is $_displayName and I was found in the market model yo!');
+    return _displayName;
+  }
+  void toggle() {
+    if (prod.isFavourite == true) {
+      notifyListeners();
+      print('====it is true, setting it to:');
+      prod.isFavourite = false;
+    } else {
+      notifyListeners();
+      print('====it is not true, setting it to:');
+      prod.isFavourite = true;
+    }
+  }
+
+  /*Navigation*/
+  goToCart() {
+    _navigationService!.clearStackAndShow((Routes.signView));
+  }
+
+  /*Sign out*/
+  Future logout() async {
+    await _firebaseAuthenticationService.logout();
+    _navigationService!.clearStackAndShow((Routes.signView));
+  }
+}
+
+/*I make the call in the MarketView as below*/
+
+model. displayName()
+
